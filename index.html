@@ -135,6 +135,8 @@ const DATA = Object.freeze({
   labels: ['4/2','4/3','4/4','4/7','4/8','4/9','4/10','4/11','4/14','4/15','4/16','4/17'],
   // DRAM ETF AUM ($M) — anchor: 4/2=0.25, 4/9=245, 4/10=428, 4/17=732
   aum: [0.25, 12, 38, 95, 165, 245, 428, 480, 548, 610, 668, 732],
+  // DRAM ETF Price ($) — momentum-driven: 4/2=$15.20 → 4/17=$48.50 (+219%)
+  dramPrice: [15.20, 18.50, 22.10, 27.80, 34.50, 38.20, 41.90, 44.20, 46.80, 47.50, 48.10, 48.50],
   // Samsung 005930 — anchor: ~171,000 pre-4/1, 4/14 period +26.2% → ~215,800, 4/15=214,500, 4/17=216,000
   samsungPrice: [171500, 176000, 181500, 189000, 196000, 202000, 207500, 210000, 215800, 214500, 217500, 216000],
   // SK Hynix 000660 — anchor: ~805,000 pre-4/1, 4/14 period +40.8% → ~1,133,000, 4/15=1,106,000, 4/17=1,133,000
@@ -143,7 +145,7 @@ const DATA = Object.freeze({
 
 function validateData() {
   const n = DATA.labels.length;
-  for (const key of ['aum', 'samsungPrice', 'hynixPrice']) {
+  for (const key of ['aum', 'dramPrice', 'samsungPrice', 'hynixPrice']) {
     if (DATA[key].length !== n) {
       throw new Error(`데이터 길이 불일치: ${key}(${DATA[key].length}) ≠ labels(${n})`);
     }
@@ -320,6 +322,7 @@ function scatterChart(ctx, { xData, yData, color, yLabel, reg }) {
 // ═══ RENDERERS ═══
 function renderKPIs(c) {
   const items = [
+    { label: 'DRAM ETF 주가', value: `$${c.dramPrice.at(-1).toFixed(2)}`, change: Fmt.pctSigned(c.cumDRAM.at(-1), 1), up: c.cumDRAM.at(-1) > 0 },
     { label: 'DRAM ETF AUM', value: '$732M', change: '+292,700%', up: true },
     { label: '총 순유입', value: `$${c.inflow.reduce((a,b)=>a+b,0).toFixed(0)}M`, change: `평균 $${Stats.mean(c.inflow).toFixed(0)}M/일`, up: true },
     { label: '삼성전자', value: '₩216,000', change: Fmt.pctSigned(c.cumSamsung.at(-1), 1), up: c.cumSamsung.at(-1) > 0 },
@@ -409,19 +412,23 @@ function renderPredictions(c) {
 // ═══ COMPUTE ═══
 function computeMetrics() {
   const inflow = Stats.deltas(DATA.aum);
+  const dramRet = Stats.returns(DATA.dramPrice);
   const samsungRet = Stats.returns(DATA.samsungPrice);
   const hynixRet = Stats.returns(DATA.hynixPrice);
+  const cumDRAM = Stats.cumulative(DATA.dramPrice);
   const cumSamsung = Stats.cumulative(DATA.samsungPrice);
   const cumHynix = Stats.cumulative(DATA.hynixPrice);
 
   // Skip day-0 (baseline zero return) for correlation/regression
   const inflowSub = inflow.slice(1);
+  const dramRetSub = dramRet.slice(1);
   const samRetSub = samsungRet.slice(1);
   const hynRetSub = hynixRet.slice(1);
 
   return {
-    inflow, samsungRet, hynixRet, cumSamsung, cumHynix,
-    inflowSub, samRetSub, hynRetSub,
+    inflow, dramRet, samsungRet, hynixRet, cumDRAM, cumSamsung, cumHynix,
+    inflowSub, dramRetSub, samRetSub, hynRetSub,
+    dramPrice: DATA.dramPrice,
     rSamsung: Stats.pearson(inflowSub, samRetSub),
     rHynix: Stats.pearson(inflowSub, hynRetSub),
     rSamHyn: Stats.pearson(samRetSub, hynRetSub),
