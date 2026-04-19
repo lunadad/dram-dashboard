@@ -94,11 +94,14 @@
   .error-banner[hidden] { display: none; }
   .inflow-cell { color: var(--accent); font-weight: 600; }
   .last-updated { font-size: 0.72rem; color: var(--text-faint); margin-left: 6px; }
+  .pred-table-wrapper { display: block; }
   @media (max-width: 768px) {
     .chart-grid, .corr-grid { grid-template-columns: 1fr; }
     .kpi-row { grid-template-columns: 1fr 1fr; }
     .dashboard-header { flex-direction: column; align-items: flex-start; }
     .theme-btn { align-self: flex-end; }
+    .pred-table-wrapper { overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; border-radius: 8px; margin: 0 -20px; padding: 0 20px; }
+    .pred-table { min-width: 1000px; }
   }
 </style>
 </head>
@@ -467,10 +470,12 @@ function renderPredictions(c) {
 
   $('predSection').innerHTML = `
     <p class="pred-meta">선형 회귀 모델: 유입량 감소 추세 가정 (모멘텀 감쇠). 삼성 y=${c.regSamsung.slope.toFixed(4)}x+${c.regSamsung.intercept.toFixed(2)}, 하이닉스 y=${c.regHynix.slope.toFixed(4)}x+${c.regHynix.intercept.toFixed(2)}</p>
-    <table class="pred-table">
-      <thead><tr><th>날짜</th><th>예상 유입 ($M)</th><th>누적 AUM ($M)</th><th>삼성 예상 수익률</th><th>삼성 예상가</th><th>하이닉스 예상 수익률</th><th>하이닉스 예상가</th></tr></thead>
-      <tbody>${rows}</tbody>
-    </table>
+    <div class="pred-table-wrapper">
+      <table class="pred-table">
+        <thead><tr><th>날짜</th><th>예상 유입 ($M)</th><th>누적 AUM ($M)</th><th>삼성 예상 수익률</th><th>삼성 예상가</th><th>하이닉스 예상 수익률</th><th>하이닉스 예상가</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
     <p class="pred-warn">
       ⚠ 주의: 12거래일 표본 기반 회귀이므로 예측력이 제한적입니다. 4/22 테슬라 실적 발표, 이란 휴전 연장 여부 등 외부 이벤트가 실제 주가에 더 큰 영향을 줄 수 있습니다.
       DRAM ETF의 한국 비중(~49%)은 직접적 매수 압력을 의미하지만, ETF creation/redemption 타이밍과 실제 주가 반영 사이에 시차가 존재합니다.
