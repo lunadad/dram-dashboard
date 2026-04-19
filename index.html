@@ -64,6 +64,7 @@
   .error-banner { background: #3a1a1a; color: var(--down); border: 1px solid #5a2a2a; border-radius: 8px; padding: 12px 16px; margin-bottom: 20px; font-size: 0.85rem; }
   .error-banner[hidden] { display: none; }
   .inflow-cell { color: var(--accent); font-weight: 600; }
+  .last-updated { font-size: 0.72rem; color: var(--text-faint); margin-left: 6px; }
   @media (max-width: 768px) {
     .chart-grid, .corr-grid { grid-template-columns: 1fr; }
     .kpi-row { grid-template-columns: 1fr 1fr; }
@@ -74,7 +75,7 @@
 <main class="container">
   <header>
     <h1>DRAM ETF × 삼성전자 × SK하이닉스</h1>
-    <p class="subtitle">일별 유입량 · 주가 상승률 비교 · 상관관계 · 예측 — 2026.04.02~04.17 (12거래일)</p>
+    <p class="subtitle">일별 유입량 · 주가 상승률 비교 · 상관관계 · 예측 — <span id="dateRange">로딩 중…</span><span id="lastUpdated" class="last-updated"></span></p>
   </header>
 
   <div id="errorBanner" class="error-banner" hidden role="alert" aria-live="polite"></div>
@@ -130,18 +131,14 @@
 <script>
 'use strict';
 
-// ═══ DATA ═══
-const DATA = Object.freeze({
-  labels: ['4/2','4/3','4/4','4/7','4/8','4/9','4/10','4/11','4/14','4/15','4/16','4/17'],
-  // DRAM ETF AUM ($M) — anchor: 4/2=0.25, 4/9=245, 4/10=428, 4/17=732
-  aum: [0.25, 12, 38, 95, 165, 245, 428, 480, 548, 610, 668, 732],
-  // DRAM ETF Price ($) — momentum-driven: 4/2=$15.20 → 4/17=$48.50 (+219%)
-  dramPrice: [15.20, 18.50, 22.10, 27.80, 34.50, 38.20, 41.90, 44.20, 46.80, 47.50, 48.10, 48.50],
-  // Samsung 005930 — anchor: ~171,000 pre-4/1, 4/14 period +26.2% → ~215,800, 4/15=214,500, 4/17=216,000
-  samsungPrice: [171500, 176000, 181500, 189000, 196000, 202000, 207500, 210000, 215800, 214500, 217500, 216000],
-  // SK Hynix 000660 — anchor: ~805,000 pre-4/1, 4/14 period +40.8% → ~1,133,000, 4/15=1,106,000, 4/17=1,133,000
-  hynixPrice: [808000, 840000, 878000, 925000, 975000, 1010000, 1055000, 1080000, 1133000, 1106000, 1155000, 1133000],
-});
+// ═══ DATA ═══ (populated from data.json at runtime)
+let DATA;
+
+async function loadData() {
+  const res = await fetch('./data.json');
+  if (!res.ok) throw new Error(`data.json 로드 실패 (HTTP ${res.status})`);
+  return res.json();
+}
 
 function validateData() {
   const n = DATA.labels.length;
@@ -451,8 +448,9 @@ function initCharts(c) {
 }
 
 // ═══ MAIN ═══
-function main() {
+async function main() {
   try {
+    DATA = await loadData();
     validateData();
     if (typeof Chart === 'undefined') {
       showError('차트 라이브러리를 불러오지 못했습니다. 네트워크를 확인해 주세요.');
@@ -463,6 +461,14 @@ function main() {
     renderCorrelations(computed);
     renderPredictions(computed);
     initCharts(computed);
+
+    // Update header subtitle with date range and last-updated timestamp
+    const n = DATA.labels.length;
+    $('dateRange').textContent =
+      `${DATA.labels[0]}~${DATA.labels.at(-1)} (${n}거래일)`;
+    if (DATA.updated) {
+      $('lastUpdated').textContent = ` · 업데이트: ${DATA.updated}`;
+    }
   } catch (err) {
     console.error(err);
     showError('대시보드 초기화 중 오류가 발생했습니다: ' + err.message);
