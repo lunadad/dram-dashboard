@@ -233,6 +233,17 @@ const Stats = {
   deltas(series) {
     return series.map((v, i) => i === 0 ? v : +(v - series[i - 1]).toFixed(1));
   },
+  std(x) {
+    if (!x.length) return 0;
+    const m = Stats.mean(x);
+    return Math.sqrt(x.reduce((s, v) => s + (v - m) ** 2, 0) / x.length);
+  },
+  median(x) {
+    if (!x.length) return 0;
+    const s = [...x].sort((a, b) => a - b);
+    const n = s.length;
+    return n % 2 ? s[(n - 1) / 2] : (s[n / 2 - 1] + s[n / 2]) / 2;
+  },
 };
 
 // ═══ FORMATTERS ═══
@@ -437,16 +448,39 @@ function renderCorrelations(c) {
   );
 }
 
+// Prediction constants
+const PRED_DECAY = 0.9;          // daily inflow decay factor
+const PRED_SHRINK = 0.3;         // shrink uncond. drift toward zero
+const PRED_CAP_SIGMA = 1.0;      // clamp daily return at ±1σ
+
 function renderPredictions(c) {
   const futureLabels = ['4/20(월)', '4/21(화)', '4/22(수)', '4/23(목)', '4/24(금)'];
-  const futureInflow = [58, 52, 48, 45, 42];
+
+  // 1) Realistic inflow forecast: recent median × exponential decay
+  //    (replaces hardcoded optimistic values that inflated predictions)
+  const recentMedian = Stats.median(c.inflowSub.slice(-5));
+  const futureInflow = Array.from({ length: 5 },
+    (_, i) => +(recentMedian * PRED_DECAY ** i).toFixed(1));
 
   const futureAUM = [];
   let accAUM = DATA.aum.at(-1);
   for (const f of futureInflow) { accAUM += f; futureAUM.push(Math.round(accAUM)); }
 
-  const predSamsungRet = futureInflow.map(f => c.regSamsung.slope * f + c.regSamsung.intercept);
-  const predHynixRet = futureInflow.map(f => c.regHynix.slope * f + c.regHynix.intercept);
+  // 2) R²-weighted shrinkage: low-R² regressions fade toward a shrunk drift
+  //    pred = R² · (slope·x + intercept) + (1-R²) · (drift_mean · shrink)
+  const samStd = Stats.std(c.samRetSub);
+  const hynStd = Stats.std(c.hynRetSub);
+  const samDrift = Stats.mean(c.samRetSub) * PRED_SHRINK;
+  const hynDrift = Stats.mean(c.hynRetSub) * PRED_SHRINK;
+  const clamp = (v, s) => Math.max(-s, Math.min(s, v));
+
+  const shrunkPred = (f, reg, drift, sigma) => {
+    const raw = reg.r2 * (reg.slope * f + reg.intercept) + (1 - reg.r2) * drift;
+    return clamp(raw, PRED_CAP_SIGMA * sigma);
+  };
+
+  const predSamsungRet = futureInflow.map(f => shrunkPred(f, c.regSamsung, samDrift, samStd));
+  const predHynixRet   = futureInflow.map(f => shrunkPred(f, c.regHynix,   hynDrift, hynStd));
 
   const predPrices = (startPrice, rets) => {
     let p = startPrice;
@@ -459,7 +493,7 @@ function renderPredictions(c) {
     const samR = predSamsungRet[i], hynR = predHynixRet[i];
     return `<tr>
       <td>${d}</td>
-      <td class="inflow-cell">+$${futureInflow[i]}M</td>
+      <td class="inflow-cell">+$${futureInflow[i].toFixed(1)}M</td>
       <td>$${futureAUM[i].toLocaleString()}M</td>
       <td class="${samR > 0 ? 'up' : 'down'}">${Fmt.pctSigned(samR)}</td>
       <td>${Fmt.won(predSamPrice[i])}</td>
@@ -468,17 +502,29 @@ function renderPredictions(c) {
     </tr>`;
   }).join('');
 
+  const cumSam = (predSamPrice.at(-1) / DATA.samsungPrice.at(-1) - 1) * 100;
+  const cumHyn = (predHynPrice.at(-1) / DATA.hynixPrice.at(-1) - 1) * 100;
+
   $('predSection').innerHTML = `
-    <p class="pred-meta">선형 회귀 모델: 유입량 감소 추세 가정 (모멘텀 감쇠). 삼성 y=${c.regSamsung.slope.toFixed(4)}x+${c.regSamsung.intercept.toFixed(2)}, 하이닉스 y=${c.regHynix.slope.toFixed(4)}x+${c.regHynix.intercept.toFixed(2)}</p>
+    <p class="pred-meta">
+      <strong>모델:</strong> R²-축소 선형회귀 + ±1σ 클램프.
+      유입 예측: 최근 5일 중앙값 $${recentMedian.toFixed(1)}M × ${PRED_DECAY}^d (모멘텀 감쇠).
+      삼성 R²=${c.regSamsung.r2.toFixed(2)}, σ=${samStd.toFixed(2)}% · 하이닉스 R²=${c.regHynix.r2.toFixed(2)}, σ=${hynStd.toFixed(2)}%.
+    </p>
     <div class="pred-table-wrapper">
       <table class="pred-table">
         <thead><tr><th>날짜</th><th>예상 유입 ($M)</th><th>누적 AUM ($M)</th><th>삼성 예상 수익률</th><th>삼성 예상가</th><th>하이닉스 예상 수익률</th><th>하이닉스 예상가</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </div>
+    <p class="pred-meta" style="margin-top:8px;">
+      5거래일 복합 예상 수익: 삼성 <strong class="${cumSam>0?'up':'down'}">${Fmt.pctSigned(cumSam, 1)}</strong>,
+      하이닉스 <strong class="${cumHyn>0?'up':'down'}">${Fmt.pctSigned(cumHyn, 1)}</strong>
+    </p>
     <p class="pred-warn">
-      ⚠ 주의: 12거래일 표본 기반 회귀이므로 예측력이 제한적입니다. 4/22 테슬라 실적 발표, 이란 휴전 연장 여부 등 외부 이벤트가 실제 주가에 더 큰 영향을 줄 수 있습니다. 토·일·공휴일은 한국 거래소 휴장으로 예측 대상에서 제외됩니다.
-      DRAM ETF의 한국 비중(~49%)은 직접적 매수 압력을 의미하지만, ETF creation/redemption 타이밍과 실제 주가 반영 사이에 시차가 존재합니다.
+      ⚠ 주의: 이 모델은 (1) 유입 예측을 최근 관측치 기반으로 재조정하고, (2) R²로 회귀 예측력을 축소하며, (3) 일일 변동성 σ 이내로 클램프합니다.
+      그럼에도 11거래일 표본은 작고 초기 상장 서지(4/2~4/8) 영향이 남아 있어 예측력이 제한적입니다.
+      4/22 테슬라 실적, 이란 휴전 연장 등 외부 이벤트가 실제 주가를 더 크게 움직일 수 있습니다. 토·일·공휴일은 휴장으로 제외.
     </p>`;
 }
 

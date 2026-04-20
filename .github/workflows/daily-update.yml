@@ -14,10 +14,14 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
 
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+          cache-dependency-path: |
+            **/requirements.txt
 
       - name: Fetch latest market data (Yahoo Chart API)
         run: python scripts/update_data.py
@@ -27,7 +31,22 @@ jobs:
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add data.json
-          git diff --cached --quiet \
-            && echo "No new data — skipping commit" \
-            || (git commit -m "chore: update data $(date -u +'%Y-%m-%d %H:%M UTC')" \
-                && git push)
+          if git diff --cached --quiet; then
+            echo "✓ No changes to data.json"
+          else
+            git commit -m "chore: update data $(date -u +'%Y-%m-%d %H:%M UTC')"
+            # Retry push up to 3 times with exponential backoff
+            for attempt in 1 2 3; do
+              if git push; then
+                echo "✓ Pushed data.json"
+                exit 0
+              fi
+              if [ $attempt -lt 3 ]; then
+                wait=$((2 ** attempt))
+                echo "Push failed, retrying in ${wait}s (attempt $attempt/3)"
+                sleep $wait
+              fi
+            done
+            echo "✗ Failed to push after 3 retries"
+            exit 1
+          fi
