@@ -124,9 +124,26 @@ def estimate_aum(dram_prices: list[float]) -> list[float]:
 
 def main() -> None:
     print('Fetching market data from Yahoo Chart API…')
-    dram_closes    = fetch_closes(DRAM_TICKER)
-    samsung_closes = fetch_closes(SAMSUNG_TICKER)
-    hynix_closes   = fetch_closes(HYNIX_TICKER)
+    try:
+        dram_closes    = fetch_closes(DRAM_TICKER)
+        print(f'  ✓ DRAM: {len(dram_closes)} dates', file=sys.stderr)
+    except Exception as e:
+        print(f'  ✗ DRAM fetch failed: {e}', file=sys.stderr)
+        raise
+
+    try:
+        samsung_closes = fetch_closes(SAMSUNG_TICKER)
+        print(f'  ✓ Samsung: {len(samsung_closes)} dates', file=sys.stderr)
+    except Exception as e:
+        print(f'  ✗ Samsung fetch failed: {e}', file=sys.stderr)
+        raise
+
+    try:
+        hynix_closes   = fetch_closes(HYNIX_TICKER)
+        print(f'  ✓ SK Hynix: {len(hynix_closes)} dates', file=sys.stderr)
+    except Exception as e:
+        print(f'  ✗ SK Hynix fetch failed: {e}', file=sys.stderr)
+        raise
 
     labels, (dram, samsung, hynix) = align_and_trim(
         dram_closes, samsung_closes, hynix_closes, n=HISTORY_DAYS
@@ -142,10 +159,13 @@ def main() -> None:
         'hynixPrice':   [int(v) for v in hynix],
     }
 
-    with open('data.json', 'w', encoding='utf-8') as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-
-    print(f'✓ data.json updated: {data["updated"]} ({len(labels)} trading days)')
+    try:
+        with open('data.json', 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        print(f'✓ data.json updated: {data["updated"]} ({len(labels)} trading days)')
+    except IOError as e:
+        print(f'✗ Failed to write data.json: {e}', file=sys.stderr)
+        raise
 
 
 if __name__ == '__main__':
