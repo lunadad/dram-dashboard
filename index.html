@@ -438,7 +438,7 @@ function renderCorrelations(c) {
 }
 
 function renderPredictions(c) {
-  const futureLabels = ['4/18(금)', '4/21(월)', '4/22(화)', '4/23(수)', '4/24(목)'];
+  const futureLabels = ['4/20(월)', '4/21(화)', '4/22(수)', '4/23(목)', '4/24(금)'];
   const futureInflow = [58, 52, 48, 45, 42];
 
   const futureAUM = [];
@@ -477,7 +477,7 @@ function renderPredictions(c) {
       </table>
     </div>
     <p class="pred-warn">
-      ⚠ 주의: 12거래일 표본 기반 회귀이므로 예측력이 제한적입니다. 4/22 테슬라 실적 발표, 이란 휴전 연장 여부 등 외부 이벤트가 실제 주가에 더 큰 영향을 줄 수 있습니다.
+      ⚠ 주의: 12거래일 표본 기반 회귀이므로 예측력이 제한적입니다. 4/22 테슬라 실적 발표, 이란 휴전 연장 여부 등 외부 이벤트가 실제 주가에 더 큰 영향을 줄 수 있습니다. 토·일·공휴일은 한국 거래소 휴장으로 예측 대상에서 제외됩니다.
       DRAM ETF의 한국 비중(~49%)은 직접적 매수 압력을 의미하지만, ETF creation/redemption 타이밍과 실제 주가 반영 사이에 시차가 존재합니다.
     </p>`;
 }

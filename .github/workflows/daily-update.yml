@@ -18,12 +18,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-          cache: pip
 
-      - name: Install dependencies
-        run: pip install -r requirements.txt
-
-      - name: Fetch latest market data
+      - name: Fetch latest market data (Yahoo Chart API)
         run: python scripts/update_data.py
 
       - name: Commit and push data.json
