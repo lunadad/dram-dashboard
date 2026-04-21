@@ -450,8 +450,8 @@ function renderCorrelations(c) {
 
 // Prediction constants
 const PRED_DECAY = 0.9;          // daily inflow decay factor
-const PRED_SHRINK = 0.3;         // shrink uncond. drift toward zero
-const PRED_CAP_SIGMA = 1.0;      // clamp daily return at ±1σ
+const PRED_SHRINK = 0.5;         // shrink uncond. drift toward zero (increased from 0.3)
+const PRED_CAP_SIGMA = 1.5;      // clamp daily return at ±1.5σ (increased from 1.0)
 
 function renderPredictions(c) {
   const futureLabels = ['4/20(월)', '4/21(화)', '4/22(수)', '4/23(목)', '4/24(금)'];
