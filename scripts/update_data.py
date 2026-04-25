@@ -120,16 +120,64 @@ def align_and_trim(
 
 SPARK_URL = ('https://query2.finance.yahoo.com/v8/finance/spark'
              '?symbols={symbol}&range=1d&interval=1d')
+STOCKANALYSIS_URL = 'https://stockanalysis.com/etf/{symbol}/'
+
+# Last verified anchor: 2026-04-21 AUM = $1,099.6M (Roundhill press release)
+AUM_ANCHOR_DATE = '2026-04-21'
+AUM_ANCHOR_M = 1099.6
+
+
+def fetch_shares_outstanding(ticker: str) -> float | None:
+    """Scrape shares outstanding from stockanalysis.com (no auth required).
+
+    The page embeds JSON-like data: sharesOut:"46.90M". Returns share count
+    as a float, or None if extraction fails.
+    """
+    try:
+        url = STOCKANALYSIS_URL.format(symbol=ticker.lower())
+        req = urllib.request.Request(url, headers={'User-Agent': UA})
+        with urllib.request.urlopen(req, timeout=15) as r:
+            html = r.read().decode('utf-8', errors='ignore')
+        import re
+        m = re.search(r'sharesOut:"([\d.]+)\s*([MBK]?)"', html)
+        if not m:
+            return None
+        val, unit = float(m.group(1)), m.group(2)
+        mult = {'K': 1e3, 'M': 1e6, 'B': 1e9, '': 1}[unit]
+        shares = val * mult
+        print(f'  Shares outstanding: {shares/1e6:.2f}M', file=sys.stderr)
+        return shares
+    except Exception as e:
+        print(f'  shares fetch failed: {e}', file=sys.stderr)
+        return None
 
 
 def fetch_total_assets(ticker: str) -> float | None:
-    """Try multiple Yahoo endpoints to get ETF total net assets (USD).
+    """Get ETF total net assets (USD).
 
-    1. chart meta.totalAssets (no auth needed)
-    2. spark endpoint totalAssets
+    Strategy (in order):
+    1. shares outstanding × current price (stockanalysis.com)
+    2. Yahoo chart meta.totalAssets
+    3. Yahoo spark endpoint totalAssets
     Returns None if all attempts fail.
     """
-    # Attempt 1: chart meta
+    # Attempt 1: shares outstanding × current price (most reliable)
+    shares = fetch_shares_outstanding(ticker)
+    if shares:
+        try:
+            now = int(time.time())
+            url = CHART_URL.format(symbol=ticker, p1=now - 86400 * 2, p2=now)
+            payload = http_get_json(url, retries=2)
+            price = (payload.get('chart', {}).get('result') or [{}])[0] \
+                      .get('meta', {}).get('regularMarketPrice')
+            if price:
+                aum = shares * float(price)
+                print(f'  AUM from shares × price: ${aum/1e6:.1f}M', file=sys.stderr)
+                return aum
+        except Exception as e:
+            print(f'  shares × price calc failed: {e}', file=sys.stderr)
+
+    # Attempt 2: chart meta
     try:
         now = int(time.time())
         url = CHART_URL.format(symbol=ticker, p1=now - 86400 * 5, p2=now)
@@ -142,7 +190,7 @@ def fetch_total_assets(ticker: str) -> float | None:
     except Exception as e:
         print(f'  AUM chart meta failed: {e}', file=sys.stderr)
 
-    # Attempt 2: spark endpoint
+    # Attempt 3: spark endpoint
     try:
         url = SPARK_URL.format(symbol=ticker)
         payload = http_get_json(url, retries=2)
@@ -160,15 +208,16 @@ def fetch_total_assets(ticker: str) -> float | None:
 def estimate_aum(dram_prices: list[float]) -> list[float]:
     """Approximate historical AUM ($M) scaled proportionally to DRAM closes.
 
-    Current AUM anchor: Yahoo chart meta totalAssets when available,
-    otherwise falls back to last known reliable value ($732M on 2026-04-17).
+    Current AUM anchor: shares × NAV when available, otherwise the last
+    verified press-release value ($1,099.6M on 2026-04-21).
     """
     total_assets = fetch_total_assets(DRAM_TICKER)
     if total_assets:
         current_aum_m = total_assets / 1_000_000
     else:
-        current_aum_m = 732.0
-        print(f'  AUM fallback anchor: ${current_aum_m:.0f}M', file=sys.stderr)
+        current_aum_m = AUM_ANCHOR_M
+        print(f'  AUM fallback anchor ({AUM_ANCHOR_DATE}): ${current_aum_m:.0f}M',
+              file=sys.stderr)
     ratio = current_aum_m / dram_prices[-1]
     return [round(p * ratio, 2) for p in dram_prices]
 

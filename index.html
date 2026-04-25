@@ -633,14 +633,15 @@ function scatterChart(ctx, { xData, yData, color, yLabel, reg }) {
 // ═══ RENDERERS ═══
 function renderKPIs(c) {
   const lastAUM = DATA.aum.at(-1);
-  const firstAUM = DATA.aum[0];
-  const aumChange = ((lastAUM - firstAUM) / firstAUM) * 100;
   const lastSamsung = DATA.samsungPrice.at(-1);
   const lastHynix = DATA.hynixPrice.at(-1);
 
+  // AUM 표시: $1B 이상이면 'B', 미만이면 'M'
+  const fmtAUM = (m) => m >= 1000 ? `$${(m/1000).toFixed(2)}B` : `$${m.toFixed(0)}M`;
+
   const items = [
     { label: 'DRAM ETF 주가', value: `$${c.dramPrice.at(-1).toFixed(2)}`, change: Fmt.pctSigned(c.cumDRAM.at(-1), 1), up: c.cumDRAM.at(-1) > 0 },
-    { label: 'DRAM ETF AUM', value: `$${lastAUM.toFixed(0)}M`, change: Fmt.pctSigned(aumChange, 1) + ' (기간내)', up: aumChange > 0 },
+    { label: 'DRAM ETF AUM', value: fmtAUM(lastAUM), change: 'shares × price (실시간 추정)', up: true },
     { label: '총 순유입', value: `$${c.inflow.reduce((a,b)=>a+b,0).toFixed(0)}M`, change: `평균 $${Stats.mean(c.inflow).toFixed(1)}M/일`, up: true },
     { label: '삼성전자', value: Fmt.won(lastSamsung), change: Fmt.pctSigned(c.cumSamsung.at(-1), 1), up: c.cumSamsung.at(-1) > 0 },
     { label: 'SK하이닉스', value: Fmt.won(lastHynix), change: Fmt.pctSigned(c.cumHynix.at(-1), 1), up: c.cumHynix.at(-1) > 0 },
