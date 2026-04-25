@@ -190,6 +190,12 @@
 
   <section class="corr-grid" id="corrGrid" aria-label="상관관계 지표"></section>
 
+  <section class="chart-card full" style="margin-bottom: 28px;" aria-label="3변수 관계 분석">
+    <h2 class="chart-title">3변수 관계: DRAM 유입 × 가격 모멘텀 × 예상 Korean Stock 수익률</h2>
+    <div class="bubble-chart-wrap"><canvas id="bubbleChart" role="img" aria-label="DRAM 유입대비 가격변화와 한국 주식 예상수익률 버블 차트"></canvas></div>
+    <p class="pred-meta">버블 크기 = 예상 수익률, X축 = DRAM 일일 유입($M), Y축 = DRAM 일일 수익률(%), 색상 = Samsung(초록)/Hynix(분홍)</p>
+  </section>
+
   <section class="chart-grid" aria-label="산점도 및 회귀 분석">
     <article class="chart-card">
       <h2 class="chart-title">산점도: DRAM ETF 유입 → 삼성전자 수익률</h2>
@@ -356,7 +362,7 @@ function toggleTheme() {
     renderActions(COMPUTED);
     renderSidebar(COMPUTED);
     renderCorrelations(COMPUTED);
-    ['mainChart', 'aumChart', 'cumChart', 'scatterSamsung', 'scatterHynix'].forEach(id => {
+    ['mainChart', 'aumChart', 'cumChart', 'bubbleChart', 'scatterSamsung', 'scatterHynix'].forEach(id => {
       Chart.getChart($(id))?.destroy();
     });
     applyChartDefaults();
@@ -429,6 +435,62 @@ function cumulativeChart(ctx, labels, cumSamsung, cumHynix) {
       scales: { y: { title: { display: true, text: '누적 수익률 (%)' }, grid: { color: cssVar('--grid') } } }
     }
   });
+}
+
+function bubbleChart(ctx, { inflowData, dramRetData, samExpected, hynExpected }) {
+  // Prepare bubble datasets: one for Samsung, one for Hynix
+  const samBubbles = inflowData.map((x, i) => ({
+    x: x,
+    y: dramRetData[i],
+    r: Math.abs(samExpected[i]) * 3 + 4,  // radius: size by magnitude
+  }));
+  const hynBubbles = inflowData.map((x, i) => ({
+    x: x,
+    y: dramRetData[i],
+    r: Math.abs(hynExpected[i]) * 3 + 4,
+  }));
+
+  const chartObj = new Chart(ctx, {
+    type: 'bubble',
+    data: {
+      datasets: [
+        {
+          label: '삼성전자 (예상 수익률)',
+          data: samBubbles,
+          backgroundColor: 'rgba(5, 150, 105, 0.4)',
+          borderColor: 'var(--up)',
+          borderWidth: 1.5,
+        },
+        {
+          label: 'SK하이닉스 (예상 수익률)',
+          data: hynBubbles,
+          backgroundColor: 'rgba(244, 114, 182, 0.4)',
+          borderColor: 'var(--accent-pink)',
+          borderWidth: 1.5,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { position: 'bottom' } },
+      scales: {
+        x: {
+          type: 'linear',
+          position: 'bottom',
+          title: { display: true, text: 'DRAM 일일 유입 ($M)' },
+          ticks: { color: 'var(--text-muted)', font: { size: 11 } },
+          grid: { color: 'var(--grid)' },
+        },
+        y: {
+          title: { display: true, text: 'DRAM 일일 수익률 (%)' },
+          ticks: { color: 'var(--text-muted)', font: { size: 11 } },
+          grid: { color: 'var(--grid)' },
+        },
+      },
+    },
+  });
+  return chartObj;
 }
 
 function scatterChart(ctx, { xData, yData, color, yLabel, reg }) {
@@ -528,24 +590,43 @@ function renderSignals(c) {
   const samSig = scoreToSignal(samScore);
   const hynSig = scoreToSignal(hynScore);
 
-  const renderCard = (title, score, sig, expected) => `
-    <div style="border: 1px solid var(--border); border-radius: 8px; padding: 12px; background: var(--card-bg);">
-      <div style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 4px;">${title}</div>
-      <div style="font-size: 1.8rem; font-weight: bold; margin-bottom: 8px;">
-        <span class="${sig.class}">${sig.emoji} ${sig.text}</span>
+  const renderCard = (title, score, sig, expected) => {
+    const canvasId = `gauge-${Math.random().toString(36).substr(2, 9)}`;
+    return `
+      <div style="border: 1px solid var(--border); border-radius: 8px; padding: 12px; background: var(--card-bg);">
+        <div style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 8px;">${title}</div>
+        <div style="display: flex; gap: 12px; align-items: center;">
+          <div style="flex: 1;">
+            <div style="font-size: 1.6rem; font-weight: bold; margin-bottom: 6px;">
+              <span class="${sig.class}">${sig.emoji} ${sig.text}</span>
+            </div>
+            <div style="font-size: 0.8rem; color: var(--text); line-height: 1.4;">
+              <div>회귀 예상: <strong class="${expected > 0 ? 'up' : 'down'}">${expected > 0 ? '+' : ''}${expected.toFixed(2)}%</strong></div>
+              <div>신호강도: <strong>${(score*100).toFixed(0)}/200</strong></div>
+              <div>유입신호: <strong class="${inflowZ > 0.5 ? 'up' : 'down'}">${inflowZ > 0 ? '+' : ''}${inflowZ.toFixed(1)}σ</strong></div>
+            </div>
+          </div>
+          <div class="gauge-container" style="width: 100px; height: 100px;">
+            <canvas id="${canvasId}" width="100" height="100" style="width: 100%; height: 100%;"></canvas>
+          </div>
+        </div>
       </div>
-      <div style="font-size: 0.85rem; color: var(--text); line-height: 1.4;">
-        <div>회귀 예상: <strong class="${expected > 0 ? 'up' : 'down'}">${expected > 0 ? '+' : ''}${expected.toFixed(2)}%</strong></div>
-        <div>신호강도: <strong>${(score*100).toFixed(0)}/200</strong></div>
-        <div>유입신호: <strong class="${inflowZ > 0.5 ? 'up' : 'down'}">${inflowZ > 0 ? '+' : ''}${inflowZ.toFixed(1)}σ</strong></div>
-      </div>
-    </div>
-  `;
+    `;
+  };
 
   $('signalSection').innerHTML = `
     ${renderCard('삼성전자 (005930)', samScore, samSig, expectedSamReturn)}
     ${renderCard('SK하이닉스 (000660)', hynScore, hynSig, expectedHynReturn)}
   `;
+
+  // Render gauge charts after DOM update
+  requestAnimationFrame(() => {
+    document.querySelectorAll('[id^="gauge-"]').forEach((canvas, idx) => {
+      const ctx = canvas.getContext('2d');
+      const score = idx === 0 ? samScore : hynScore;
+      drawGauge(ctx, score);
+    });
+  });
 
   const disclaimer = document.createElement('p');
   disclaimer.className = 'pred-warn';
@@ -802,6 +883,16 @@ function initCharts(c) {
   mainChart($('mainChart'), DATA.labels, c.inflow, c.samsungRet, c.hynixRet);
   aumChart($('aumChart'), DATA.labels, DATA.aum);
   cumulativeChart($('cumChart'), DATA.labels, c.cumSamsung, c.cumHynix);
+
+  // Bubble chart: DRAM inflow × price momentum × expected korean stock returns
+  const samExpected = c.inflow.map(f => c.regSamsung.slope * f + c.regSamsung.intercept);
+  const hynExpected = c.inflow.map(f => c.regHynix.slope * f + c.regHynix.intercept);
+  bubbleChart($('bubbleChart'), {
+    inflowData: c.inflow,
+    dramRetData: c.dramRet,
+    samExpected,
+    hynExpected,
+  });
 
   const scatters = [
     { canvasId: 'scatterSamsung', xData: c.inflowSub, yData: c.samRetSub, color: '#34d399', yLabel: '삼성전자', reg: c.regSamsung },
