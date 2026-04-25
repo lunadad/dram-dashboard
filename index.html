@@ -107,9 +107,9 @@
   .pred-table-wrapper { display: block; }
 
   /* ═══ NEW: 2-COLUMN LAYOUT ═══ */
-  .dashboard-wrapper { display: grid; grid-template-columns: 1fr 320px; gap: 24px; }
+  .dashboard-wrapper { display: grid; grid-template-columns: 1fr; gap: 24px; }
   .dashboard-content { min-width: 0; }
-  .dashboard-sidebar { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 20px; height: fit-content; position: sticky; top: 24px; z-index: 40; }
+  .dashboard-sidebar { display: none; }
   .sidebar-title { font-size: 0.75rem; font-weight: 800; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 18px; padding-bottom: 12px; border-bottom: 1px solid var(--border-soft); }
   .sidebar-item { margin-bottom: 16px; padding-bottom: 16px; border-bottom: 1px solid var(--border-soft); }
   .sidebar-item:last-child { margin-bottom: 0; padding-bottom: 0; border-bottom: none; }
@@ -260,7 +260,6 @@
     </div>
   </footer>
 
-  <aside class="dashboard-sidebar"></aside>
 </main>
 
 <script>
@@ -397,7 +396,6 @@ function toggleTheme() {
     renderKPIs(COMPUTED);
     renderSignals(COMPUTED);
     renderActions(COMPUTED);
-    renderSidebar(COMPUTED);
     renderCorrelations(COMPUTED);
     ['mainChart', 'aumChart', 'cumChart', 'bubbleChart', 'scatterSamsung', 'scatterHynix'].forEach(id => {
       Chart.getChart($(id))?.destroy();
@@ -1066,7 +1064,6 @@ async function main() {
     renderKPIs(COMPUTED);
     renderSignals(COMPUTED);
     renderActions(COMPUTED);
-    renderSidebar(COMPUTED);
     renderCorrelations(COMPUTED);
     renderPredictions(COMPUTED);
     initCharts(COMPUTED);
