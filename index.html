@@ -932,8 +932,24 @@ const PRED_DECAY = 0.9;          // daily inflow decay factor
 const PRED_SHRINK = 0.5;         // shrink uncond. drift toward zero (increased from 0.3)
 const PRED_CAP_SIGMA = 1.5;      // clamp daily return at ±1.5σ (increased from 1.0)
 
+function nextTradingDays(lastLabel, n) {
+  const [month, day] = lastLabel.split('/').map(Number);
+  const year = new Date().getFullYear();
+  const date = new Date(year, month - 1, day);
+  const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
+  const labels = [];
+  while (labels.length < n) {
+    date.setDate(date.getDate() + 1);
+    const dow = date.getDay();
+    if (dow !== 0 && dow !== 6) {
+      labels.push(`${date.getMonth() + 1}/${date.getDate()}(${dayNames[dow]})`);
+    }
+  }
+  return labels;
+}
+
 function renderPredictions(c) {
-  const futureLabels = ['4/20(월)', '4/21(화)', '4/22(수)', '4/23(목)', '4/24(금)'];
+  const futureLabels = nextTradingDays(DATA.labels.at(-1), 5);
 
   // 1) Realistic inflow forecast: recent median × exponential decay
   //    (replaces hardcoded optimistic values that inflated predictions)
@@ -1002,8 +1018,8 @@ function renderPredictions(c) {
     </p>
     <p class="pred-warn">
       ⚠ 주의: 이 모델은 (1) 유입 예측을 최근 관측치 기반으로 재조정하고, (2) R²로 회귀 예측력을 축소하며, (3) 일일 변동성 σ 이내로 클램프합니다.
-      그럼에도 11거래일 표본은 작고 초기 상장 서지(4/2~4/8) 영향이 남아 있어 예측력이 제한적입니다.
-      4/22 테슬라 실적, 이란 휴전 연장 등 외부 이벤트가 실제 주가를 더 크게 움직일 수 있습니다. 토·일·공휴일은 휴장으로 제외.
+      그럼에도 ${DATA.labels.length - 1}거래일 표본은 작아 예측력이 제한적입니다.
+      시장 뉴스·거시 이벤트가 실제 주가를 더 크게 움직일 수 있습니다. 토·일·공휴일은 휴장으로 제외.
     </p>`;
 }
 
