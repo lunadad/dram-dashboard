@@ -78,16 +78,11 @@ def align_and_trim(
     kr_dicts: tuple[dict, dict],
     dram_closes: dict,
     n: int,
-) -> tuple[list[str], list[list]]:
+) -> tuple[list[str], list[str], list[list]]:
     """Align Korean stocks (KST) with DRAM ETF (US ET).
 
-    Korean market closes ~6:30 AM ET; US market opens at 9:30 AM ET.
-    A Korean "4/21 KST" close therefore corresponds to the DRAM "4/20 ET"
-    close (most recent available US session before the next US open).
-
-    Strategy: take the last N common Korean dates, then for each Korean date
-    find the most recent DRAM date that is ≤ Korean date (i.e. allow DRAM
-    to lag Korea by up to 1 calendar day).
+    Returns (labels, kr_dates, [dram, samsung, hynix]) where kr_dates are
+    YYYY-MM-DD strings used for AUM anchor interpolation.
     """
     samsung_closes, hynix_closes = kr_dicts
     kr_common = sorted(set(samsung_closes) & set(hynix_closes))
@@ -99,15 +94,15 @@ def align_and_trim(
 
     selected_kr = kr_common[-n:]
 
-    labels, sam_vals, hyn_vals, dram_vals = [], [], [], []
+    labels, kr_dates, sam_vals, hyn_vals, dram_vals = [], [], [], [], []
     for kr_date in selected_kr:
-        # find latest DRAM date ≤ kr_date (allow 1-day lag)
         matching = [d for d in dram_sorted if d <= kr_date]
         if not matching:
             print(f'  skip {kr_date}: no DRAM date ≤ {kr_date}', file=sys.stderr)
             continue
         dram_date = matching[-1]
         labels.append(f"{int(kr_date[5:7])}/{int(kr_date[8:10])}")
+        kr_dates.append(kr_date)
         sam_vals.append(samsung_closes[kr_date])
         hyn_vals.append(hynix_closes[kr_date])
         dram_vals.append(dram_closes[dram_date])
@@ -115,16 +110,21 @@ def align_and_trim(
             print(f'  {kr_date} (KR) ↔ {dram_date} (DRAM, 1-day lag)',
                   file=sys.stderr)
 
-    return labels, [dram_vals, sam_vals, hyn_vals]
+    return labels, kr_dates, [dram_vals, sam_vals, hyn_vals]
 
 
 SPARK_URL = ('https://query2.finance.yahoo.com/v8/finance/spark'
              '?symbols={symbol}&range=1d&interval=1d')
 STOCKANALYSIS_URL = 'https://stockanalysis.com/etf/{symbol}/'
 
-# Last verified anchor: 2026-04-21 AUM = $1,099.6M (Roundhill press release)
-AUM_ANCHOR_DATE = '2026-04-21'
-AUM_ANCHOR_M = 1099.6
+# Verified AUM anchors ($M) from Roundhill press releases & confirmed reports.
+# Used for linear interpolation between known data points.
+AUM_ANCHORS: dict[str, float] = {
+    '2026-04-09': 245.0,    # ~$245M (confirmed, 1 week post-launch)
+    '2026-04-10': 428.0,    # ~$428M (confirmed)
+    '2026-04-17': 732.0,    # $732M  (Roundhill announcement)
+    '2026-04-21': 1099.6,   # $1,099.6M (Roundhill "$1B milestone" press release)
+}
 
 
 def fetch_shares_outstanding(ticker: str) -> float | None:
@@ -205,21 +205,50 @@ def fetch_total_assets(ticker: str) -> float | None:
     return None
 
 
-def estimate_aum(dram_prices: list[float]) -> list[float]:
-    """Approximate historical AUM ($M) scaled proportionally to DRAM closes.
+def estimate_aum(kr_dates: list[str], dram_prices: list[float]) -> list[float]:
+    """AUM ($M) per date using verified anchors + linear date interpolation.
 
-    Current AUM anchor: shares × NAV when available, otherwise the last
-    verified press-release value ($1,099.6M on 2026-04-21).
+    Most recent date uses shares × market price (most accurate).
+    Dates between known anchors are linearly interpolated by calendar day.
+    Dates before the earliest anchor fall back to the earliest anchor value.
     """
+    from datetime import date as date_cls
+
+    # Build anchor map: static anchors + today's live value
+    anchors: dict[str, float] = dict(AUM_ANCHORS)
     total_assets = fetch_total_assets(DRAM_TICKER)
     if total_assets:
         current_aum_m = total_assets / 1_000_000
+        anchors[kr_dates[-1]] = current_aum_m
+        print(f'  AUM today ({kr_dates[-1]}): ${current_aum_m:.1f}M', file=sys.stderr)
     else:
-        current_aum_m = AUM_ANCHOR_M
-        print(f'  AUM fallback anchor ({AUM_ANCHOR_DATE}): ${current_aum_m:.0f}M',
-              file=sys.stderr)
-    ratio = current_aum_m / dram_prices[-1]
-    return [round(p * ratio, 2) for p in dram_prices]
+        print('  AUM live fetch failed – using static anchors only', file=sys.stderr)
+
+    sorted_anchors = sorted(anchors.items())
+    anchor_ords = [date_cls.fromisoformat(d).toordinal() for d, _ in sorted_anchors]
+    anchor_vals = [v for _, v in sorted_anchors]
+
+    result = []
+    for date_str in kr_dates:
+        if date_str in anchors:
+            result.append(round(anchors[date_str], 1))
+            continue
+        d_ord = date_cls.fromisoformat(date_str).toordinal()
+        # Find left/right bracketing anchors
+        li = next((i for i in range(len(anchor_ords) - 1, -1, -1)
+                   if anchor_ords[i] <= d_ord), None)
+        ri = next((i for i in range(len(anchor_ords))
+                   if anchor_ords[i] >= d_ord), None)
+        if li is None:
+            aum = anchor_vals[0]
+        elif ri is None or ri == li:
+            aum = anchor_vals[-1]
+        else:
+            t = (d_ord - anchor_ords[li]) / (anchor_ords[ri] - anchor_ords[li])
+            aum = anchor_vals[li] + t * (anchor_vals[ri] - anchor_vals[li])
+        result.append(round(aum, 1))
+
+    return result
 
 
 def main() -> None:
@@ -245,10 +274,10 @@ def main() -> None:
         print(f'  ✗ SK Hynix fetch failed: {e}', file=sys.stderr)
         raise
 
-    labels, (dram, samsung, hynix) = align_and_trim(
+    labels, kr_dates, (dram, samsung, hynix) = align_and_trim(
         (samsung_closes, hynix_closes), dram_closes, n=HISTORY_DAYS
     )
-    aum = estimate_aum(dram)
+    aum = estimate_aum(kr_dates, dram)
 
     data = {
         'updated':      datetime.now(KST).strftime('%Y-%m-%d %H:%M'),
