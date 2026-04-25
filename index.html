@@ -632,14 +632,20 @@ function scatterChart(ctx, { xData, yData, color, yLabel, reg }) {
 
 // ═══ RENDERERS ═══
 function renderKPIs(c) {
+  const lastAUM = DATA.aum.at(-1);
+  const firstAUM = DATA.aum[0];
+  const aumChange = ((lastAUM - firstAUM) / firstAUM) * 100;
+  const lastSamsung = DATA.samsungPrice.at(-1);
+  const lastHynix = DATA.hynixPrice.at(-1);
+
   const items = [
     { label: 'DRAM ETF 주가', value: `$${c.dramPrice.at(-1).toFixed(2)}`, change: Fmt.pctSigned(c.cumDRAM.at(-1), 1), up: c.cumDRAM.at(-1) > 0 },
-    { label: 'DRAM ETF AUM', value: '$732M', change: '+192,700%', up: true },
-    { label: '총 순유입', value: `$${c.inflow.reduce((a,b)=>a+b,0).toFixed(0)}M`, change: `평균 $${Stats.mean(c.inflow).toFixed(0)}M/일`, up: true },
-    { label: '삼성전자', value: '₩216,000', change: Fmt.pctSigned(c.cumSamsung.at(-1), 1), up: c.cumSamsung.at(-1) > 0 },
-    { label: 'SK하이닉스', value: '₩1,133,000', change: Fmt.pctSigned(c.cumHynix.at(-1), 1), up: c.cumHynix.at(-1) > 0 },
-    { label: '상관계수 (유입→삼성)', value: c.rSamsung.toFixed(3), change: c.rSamsung > 0.5 ? '강한 양의 상관' : '중간 상관', up: c.rSamsung > 0 },
-    { label: '상관계수 (유입→하이닉스)', value: c.rHynix.toFixed(3), change: c.rHynix > 0.5 ? '강한 양의 상관' : '중간 상관', up: c.rHynix > 0 },
+    { label: 'DRAM ETF AUM', value: `$${lastAUM.toFixed(0)}M`, change: Fmt.pctSigned(aumChange, 1) + ' (기간내)', up: aumChange > 0 },
+    { label: '총 순유입', value: `$${c.inflow.reduce((a,b)=>a+b,0).toFixed(0)}M`, change: `평균 $${Stats.mean(c.inflow).toFixed(1)}M/일`, up: true },
+    { label: '삼성전자', value: Fmt.won(lastSamsung), change: Fmt.pctSigned(c.cumSamsung.at(-1), 1), up: c.cumSamsung.at(-1) > 0 },
+    { label: 'SK하이닉스', value: Fmt.won(lastHynix), change: Fmt.pctSigned(c.cumHynix.at(-1), 1), up: c.cumHynix.at(-1) > 0 },
+    { label: '상관계수 (유입→삼성)', value: c.rSamsung.toFixed(3), change: c.rSamsung > 0.5 ? '강한 양의 상관' : c.rSamsung > 0.2 ? '중간 양의 상관' : '약한 상관', up: c.rSamsung > 0 },
+    { label: '상관계수 (유입→하이닉스)', value: c.rHynix.toFixed(3), change: c.rHynix > 0.5 ? '강한 양의 상관' : c.rHynix > 0.2 ? '중간 양의 상관' : '약한 상관', up: c.rHynix > 0 },
   ];
   renderList($('kpiRow'), items, k =>
     `<div class="kpi"><div class="kpi-label">${k.label}</div><div class="kpi-value">${k.value}</div><div class="kpi-change ${k.up ? 'up' : 'down'}">${k.change}</div></div>`
