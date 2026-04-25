@@ -68,6 +68,9 @@
   .kpi-change { font-size: 0.8rem; margin-top: 2px; }
   .up { color: var(--up); }
   .down { color: var(--down); }
+  .strong-up { color: var(--up); font-weight: 700; }
+  .strong-down { color: var(--down); font-weight: 700; }
+  .neutral { color: var(--text-muted); }
   .chart-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 28px; }
   .chart-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 20px; transition: background 0.2s, border-color 0.2s; }
   .chart-card.full { grid-column: 1 / -1; }
@@ -119,6 +122,11 @@
 
   <section aria-label="주요 지표 (KPI)">
     <div class="kpi-row" id="kpiRow"></div>
+  </section>
+
+  <section class="chart-card full" style="margin-bottom: 20px;" aria-label="매수/매도 신호">
+    <h2 class="chart-title">매수/매도 추천지수 (DRAM 유입 + 가격 모멘텀 기반)</h2>
+    <div id="signalSection" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding: 16px 0;"></div>
   </section>
 
   <section class="chart-grid" aria-label="시계열 차트">
@@ -295,7 +303,9 @@ function toggleTheme() {
   if (COMPUTED) {
     $('kpiRow').innerHTML = '';
     $('corrGrid').innerHTML = '';
+    $('signalSection').innerHTML = '';
     renderKPIs(COMPUTED);
+    renderSignals(COMPUTED);
     renderCorrelations(COMPUTED);
     ['mainChart', 'aumChart', 'cumChart', 'scatterSamsung', 'scatterHynix'].forEach(id => {
       Chart.getChart($(id))?.destroy();
@@ -430,6 +440,76 @@ function corrText(r) {
   if (a > 0.4) return '중간 양의 상관';
   if (a > 0.2) return '약한 양의 상관';
   return '거의 무상관';
+}
+
+function renderSignals(c) {
+  // DRAM 오늘의 유입 및 가격 모멘텀 분석
+  const dramInflow = c.inflow.at(-1);  // 오늘 추정 유입
+  const inflowMean = Stats.mean(c.inflow);
+  const inflowStd = Stats.std(c.inflow);
+  const inflowZ = (dramInflow - inflowMean) / (inflowStd || 1);
+
+  const dramReturn = c.dramRet.at(-1);  // 오늘 수익률
+  const dramaRetMean = Stats.mean(c.dramRet.slice(1));
+
+  // 회귀 모델로 예상 삼성/하이닉스 수익률 계산
+  const expectedSamReturn = c.regSamsung.slope * dramInflow + c.regSamsung.intercept;
+  const expectedHynReturn = c.regHynix.slope * dramInflow + c.regHynix.intercept;
+
+  // 신호 점수: -2(강 매도) ~ +2(강 매수)
+  const signalScore = (expected, dramMom) => {
+    let score = 0;
+    if (expected > 1.5) score += 1.5;
+    else if (expected > 0.5) score += 0.8;
+    else if (expected > -0.5) score += 0;
+    else if (expected > -1.5) score -= 0.8;
+    else score -= 1.5;
+    if (dramMom > dramaRetMean + inflowStd/10) score += 0.3;
+    else if (dramMom < dramaRetMean - inflowStd/10) score -= 0.3;
+    return score;
+  };
+
+  const samScore = signalScore(expectedSamReturn, dramReturn);
+  const hynScore = signalScore(expectedHynReturn, dramReturn);
+
+  const scoreToSignal = (s) => {
+    if (s > 1.2) return { text: '강 매수', class: 'strong-up', emoji: '⬆️⬆️' };
+    if (s > 0.5) return { text: '매수', class: 'up', emoji: '⬆️' };
+    if (s > -0.5) return { text: '관망', class: 'neutral', emoji: '→' };
+    if (s > -1.2) return { text: '매도', class: 'down', emoji: '⬇️' };
+    return { text: '강 매도', class: 'strong-down', emoji: '⬇️⬇️' };
+  };
+
+  const samSig = scoreToSignal(samScore);
+  const hynSig = scoreToSignal(hynScore);
+
+  const renderCard = (title, score, sig, expected) => `
+    <div style="border: 1px solid var(--border); border-radius: 8px; padding: 12px; background: var(--card-bg);">
+      <div style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 4px;">${title}</div>
+      <div style="font-size: 1.8rem; font-weight: bold; margin-bottom: 8px;">
+        <span class="${sig.class}">${sig.emoji} ${sig.text}</span>
+      </div>
+      <div style="font-size: 0.85rem; color: var(--text); line-height: 1.4;">
+        <div>회귀 예상: <strong class="${expected > 0 ? 'up' : 'down'}">${expected > 0 ? '+' : ''}${expected.toFixed(2)}%</strong></div>
+        <div>신호강도: <strong>${(score*100).toFixed(0)}/200</strong></div>
+        <div>유입신호: <strong class="${inflowZ > 0.5 ? 'up' : 'down'}">${inflowZ > 0 ? '+' : ''}${inflowZ.toFixed(1)}σ</strong></div>
+      </div>
+    </div>
+  `;
+
+  $('signalSection').innerHTML = `
+    ${renderCard('삼성전자 (005930)', samScore, samSig, expectedSamReturn)}
+    ${renderCard('SK하이닉스 (000660)', hynScore, hynSig, expectedHynReturn)}
+  `;
+
+  const disclaimer = document.createElement('p');
+  disclaimer.className = 'pred-warn';
+  disclaimer.style.marginTop = '12px';
+  disclaimer.innerHTML = `
+    ⚠ 신호는 DRAM ETF의 일일 유입 및 가격 모멘텀을 기반으로 한 순간적 추천이며, 12거래일 회귀 모델의 통계적 신뢰도는 제한적입니다.
+    실제 매매 결정은 추가 펀더멘털 분석, 시장 뉴스, 개인의 위험 성향을 종합 고려하여 하시기 바랍니다.
+  `;
+  $('signalSection').parentNode.appendChild(disclaimer);
 }
 
 function renderCorrelations(c) {
@@ -580,6 +660,7 @@ async function main() {
     }
     COMPUTED = computeMetrics();
     renderKPIs(COMPUTED);
+    renderSignals(COMPUTED);
     renderCorrelations(COMPUTED);
     renderPredictions(COMPUTED);
     initCharts(COMPUTED);
