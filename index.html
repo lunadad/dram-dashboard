@@ -98,13 +98,53 @@
   .inflow-cell { color: var(--accent); font-weight: 600; }
   .last-updated { font-size: 0.72rem; color: var(--text-faint); margin-left: 6px; }
   .pred-table-wrapper { display: block; }
+
+  /* ═══ NEW: 2-COLUMN LAYOUT ═══ */
+  .dashboard-wrapper { display: grid; grid-template-columns: 1fr 320px; gap: 24px; }
+  .dashboard-content { min-width: 0; }
+  .dashboard-sidebar { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 20px; height: fit-content; position: sticky; top: 24px; }
+  .sidebar-title { font-size: 0.85rem; font-weight: 700; color: var(--text-heading); text-transform: uppercase; margin-bottom: 16px; }
+  .sidebar-item { margin-bottom: 14px; padding-bottom: 14px; border-bottom: 1px solid var(--border-soft); }
+  .sidebar-item:last-child { margin-bottom: 0; padding-bottom: 0; border-bottom: none; }
+  .sidebar-label { font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; margin-bottom: 4px; }
+  .sidebar-value { font-size: 1.3rem; font-weight: 700; color: var(--text-heading); }
+  .sidebar-subtext { font-size: 0.75rem; color: var(--text-dim); margin-top: 2px; }
+
+  /* ═══ NEW: GAUGE CHART ═══ */
+  .gauge-container { position: relative; width: 120px; height: 120px; margin: 0 auto; }
+  .gauge-canvas { width: 100%; height: 100%; }
+  .gauge-label { position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%); font-size: 0.75rem; color: var(--text-muted); white-space: nowrap; }
+
+  /* ═══ NEW: ACTION CARDS ═══ */
+  .actions-grid { display: grid; grid-template-columns: 1fr; gap: 12px; margin-bottom: 28px; }
+  .action-card { background: var(--bg-card); border-left: 4px solid var(--accent); border-radius: 8px; padding: 14px 16px; }
+  .action-card.strong-buy { border-left-color: var(--up); background: rgba(5, 150, 105, 0.05); }
+  .action-card.buy { border-left-color: var(--accent); background: rgba(79, 70, 229, 0.05); }
+  .action-card.sell { border-left-color: var(--down); background: rgba(220, 38, 38, 0.05); }
+  .action-title { font-size: 0.85rem; font-weight: 700; margin-bottom: 4px; }
+  .action-reason { font-size: 0.75rem; color: var(--text-dim); line-height: 1.4; }
+
+  /* ═══ NEW: BUBBLE CHART CONTAINER ═══ */
+  .bubble-chart-wrap { position: relative; height: 320px; }
+
+  /* ═══ NEW: CORRELATION MATRIX ═══ */
+  .corr-matrix { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .corr-cell { background: var(--bg); border-radius: 6px; padding: 8px; text-align: center; }
+  .corr-cell-val { font-size: 1.2rem; font-weight: 700; margin: 4px 0; }
+  .corr-cell-label { font-size: 0.65rem; color: var(--text-muted); }
+
+  @media (max-width: 1024px) {
+    .dashboard-wrapper { grid-template-columns: 1fr; }
+    .dashboard-sidebar { position: static; height: auto; }
+  }
   @media (max-width: 768px) {
-    .chart-grid, .corr-grid { grid-template-columns: 1fr; }
+    .chart-grid, .corr-grid, .actions-grid { grid-template-columns: 1fr; }
     .kpi-row { grid-template-columns: 1fr 1fr; }
     .dashboard-header { flex-direction: column; align-items: flex-start; }
     .theme-btn { align-self: flex-end; }
     .pred-table-wrapper { overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; border-radius: 8px; margin: 0 -20px; padding: 0 20px; }
     .pred-table { min-width: 1000px; }
+    .dashboard-sidebar { position: static !important; width: auto !important; max-height: auto !important; margin-top: 28px; }
   }
 </style>
 </head>
@@ -127,6 +167,10 @@
   <section class="chart-card full" style="margin-bottom: 20px;" aria-label="매수/매도 신호">
     <h2 class="chart-title">매수/매도 추천지수 (DRAM 유입 + 가격 모멘텀 기반)</h2>
     <div id="signalSection" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding: 16px 0;"></div>
+  </section>
+
+  <section aria-label="추천 액션 요약">
+    <div class="actions-grid" id="actionsSection"></div>
   </section>
 
   <section class="chart-grid" aria-label="시계열 차트">
@@ -172,6 +216,8 @@
     상관관계: 피어슨 상관계수(r). 예측: OLS 선형 회귀(유입량 → 주가 수익률). 12거래일 표본으로 통계적 유의성은 제한적이며, 방향성 참고용입니다.
     </div>
   </footer>
+
+  <aside class="dashboard-sidebar" style="position: fixed; right: 24px; top: 24px; width: 320px; max-height: calc(100vh - 48px); overflow-y: auto; z-index: 100;"></aside>
 </main>
 
 <script>
@@ -304,8 +350,11 @@ function toggleTheme() {
     $('kpiRow').innerHTML = '';
     $('corrGrid').innerHTML = '';
     $('signalSection').innerHTML = '';
+    $('actionsSection').innerHTML = '';
     renderKPIs(COMPUTED);
     renderSignals(COMPUTED);
+    renderActions(COMPUTED);
+    renderSidebar(COMPUTED);
     renderCorrelations(COMPUTED);
     ['mainChart', 'aumChart', 'cumChart', 'scatterSamsung', 'scatterHynix'].forEach(id => {
       Chart.getChart($(id))?.destroy();
@@ -472,13 +521,9 @@ function renderSignals(c) {
   const samScore = signalScore(expectedSamReturn, dramReturn);
   const hynScore = signalScore(expectedHynReturn, dramReturn);
 
-  const scoreToSignal = (s) => {
-    if (s > 1.2) return { text: '강 매수', class: 'strong-up', emoji: '⬆️⬆️' };
-    if (s > 0.5) return { text: '매수', class: 'up', emoji: '⬆️' };
-    if (s > -0.5) return { text: '관망', class: 'neutral', emoji: '→' };
-    if (s > -1.2) return { text: '매도', class: 'down', emoji: '⬇️' };
-    return { text: '강 매도', class: 'strong-down', emoji: '⬇️⬇️' };
-  };
+  // Store signal info in COMPUTED for sidebar/actions use
+  c.signalSamsung = { score: samScore, expected: expectedSamReturn };
+  c.signalHynix = { score: hynScore, expected: expectedHynReturn };
 
   const samSig = scoreToSignal(samScore);
   const hynSig = scoreToSignal(hynScore);
@@ -526,6 +571,123 @@ function renderCorrelations(c) {
        <div class="corr-desc">${x.desc}</div>
      </div>`
   );
+}
+
+// ═══ ACTIONS SUMMARY ═══
+function renderActions(c) {
+  const samScore = scoreToSignal(c.signalSamsung?.score || 0);
+  const hynScore = scoreToSignal(c.signalHynix?.score || 0);
+
+  const actions = [
+    {
+      type: samScore.class,
+      title: `삼성전자 ${samScore.emoji} ${samScore.text}`,
+      reason: `예상수익률 ${(c.signalSamsung?.expected || 0).toFixed(2)}% | 신호강도 ${((c.signalSamsung?.score || 0)*100).toFixed(0)}/200`,
+    },
+    {
+      type: hynScore.class,
+      title: `SK하이닉스 ${hynScore.emoji} ${hynScore.text}`,
+      reason: `예상수익률 ${(c.signalHynix?.expected || 0).toFixed(2)}% | 신호강도 ${((c.signalHynix?.score || 0)*100).toFixed(0)}/200`,
+    },
+  ];
+
+  const html = actions
+    .map(a => `
+      <div class="action-card ${a.type}">
+        <div class="action-title">${a.title}</div>
+        <div class="action-reason">${a.reason}</div>
+      </div>
+    `)
+    .join('');
+
+  $('actionsSection').innerHTML = html;
+}
+
+// Helper function for signal scoring (used by renderSignals and renderActions)
+function scoreToSignal(s) {
+  if (s > 1.2) return { text: '강 매수', class: 'strong-buy', emoji: '⬆️⬆️' };
+  if (s > 0.5) return { text: '매수', class: 'buy', emoji: '⬆️' };
+  if (s > -0.5) return { text: '관망', class: 'neutral', emoji: '→' };
+  if (s > -1.2) return { text: '매도', class: 'sell', emoji: '⬇️' };
+  return { text: '강 매도', class: 'strong-down', emoji: '⬇️⬇️' };
+}
+
+// ═══ SIDEBAR STATE ═══
+function renderSidebar(c) {
+  const currentSignal = c.signalSamsung?.score > c.signalHynix?.score
+    ? { type: 'Samsung', score: c.signalSamsung.score, signal: scoreToSignal(c.signalSamsung.score) }
+    : { type: 'Hynix', score: c.signalHynix.score, signal: scoreToSignal(c.signalHynix.score) };
+
+  const sidebar = document.querySelector('.dashboard-sidebar');
+  if (!sidebar) return; // sidebar not in DOM yet
+
+  sidebar.innerHTML = `
+    <div class="sidebar-title">현재 시장 상태</div>
+
+    <div class="sidebar-item">
+      <div class="sidebar-label">최강 신호</div>
+      <div class="sidebar-value" style="color: var(--${currentSignal.signal.class.includes('up') ? 'up' : currentSignal.signal.class.includes('down') ? 'down' : 'text-muted'})">
+        ${currentSignal.signal.emoji}<br>${currentSignal.type}
+      </div>
+      <div class="sidebar-subtext">${currentSignal.signal.text}</div>
+    </div>
+
+    <div class="sidebar-item">
+      <div class="sidebar-label">DRAM 유입</div>
+      <div class="sidebar-value">${(c.inflow.at(-1)).toFixed(1)}M</div>
+      <div class="sidebar-subtext">평균 대비 ${((c.inflow.at(-1) - Stats.mean(c.inflow)) / (Stats.std(c.inflow) || 1)).toFixed(1)}σ</div>
+    </div>
+
+    <div class="sidebar-item">
+      <div class="sidebar-label">DRAM 수익률</div>
+      <div class="sidebar-value ${c.dramRet.at(-1) > 0 ? 'up' : 'down'}">${c.dramRet.at(-1) > 0 ? '+' : ''}${c.dramRet.at(-1).toFixed(2)}%</div>
+      <div class="sidebar-subtext">전체 기간: ${c.cumDRAM.at(-1).toFixed(1)}%</div>
+    </div>
+
+    <div class="sidebar-item">
+      <div class="sidebar-label">삼성 수익률</div>
+      <div class="sidebar-value ${c.cumSamsung.at(-1) > 0 ? 'up' : 'down'}">${c.cumSamsung.at(-1) > 0 ? '+' : ''}${c.cumSamsung.at(-1).toFixed(1)}%</div>
+      <div class="sidebar-subtext">일일: ${c.samsungRet.at(-1).toFixed(2)}%</div>
+    </div>
+
+    <div class="sidebar-item">
+      <div class="sidebar-label">하이닉스 수익률</div>
+      <div class="sidebar-value ${c.cumHynix.at(-1) > 0 ? 'up' : 'down'}">${c.cumHynix.at(-1) > 0 ? '+' : ''}${c.cumHynix.at(-1).toFixed(1)}%</div>
+      <div class="sidebar-subtext">일일: ${c.hynixRet.at(-1).toFixed(2)}%</div>
+    </div>
+  `;
+}
+
+// ═══ GAUGE CHART ═══
+function drawGauge(ctx, score, max = 2) {
+  const normalizedScore = Math.max(-1, Math.min(1, score / max));
+  ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+
+  const cx = ctx.canvas.width / 2;
+  const cy = ctx.canvas.height / 2;
+  const radius = Math.min(cx, cy) * 0.8;
+
+  // Background arc
+  ctx.strokeStyle = 'var(--border)';
+  ctx.lineWidth = 12;
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius, Math.PI * 0.25, Math.PI * 1.75);
+  ctx.stroke();
+
+  // Needle
+  const angle = Math.PI + (normalizedScore * Math.PI * 0.5);
+  ctx.strokeStyle = normalizedScore > 0 ? 'var(--up)' : 'var(--down)';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(cx, cy);
+  ctx.lineTo(cx + Math.cos(angle) * radius * 0.9, cy + Math.sin(angle) * radius * 0.9);
+  ctx.stroke();
+
+  // Center circle
+  ctx.fillStyle = 'var(--bg-card)';
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius * 0.15, 0, Math.PI * 2);
+  ctx.fill();
 }
 
 // Prediction constants
@@ -661,6 +823,8 @@ async function main() {
     COMPUTED = computeMetrics();
     renderKPIs(COMPUTED);
     renderSignals(COMPUTED);
+    renderActions(COMPUTED);
+    renderSidebar(COMPUTED);
     renderCorrelations(COMPUTED);
     renderPredictions(COMPUTED);
     initCharts(COMPUTED);
