@@ -1,0 +1,2 @@
+# No external dependencies — update_data.py uses only the Python standard library
+# (urllib + json) to call Yahoo Finance Chart API directly.
