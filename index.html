@@ -825,7 +825,7 @@ function renderSidebar(c) {
 
     <div class="sidebar-item">
       <div class="sidebar-label">최강 신호</div>
-      <div class="sidebar-value" style="color: var(--${currentSignal.signal.class.includes('up') ? 'up' : currentSignal.signal.class.includes('down') ? 'down' : 'text-muted'})">
+      <div class="sidebar-value ${currentSignal.signal.class.includes('up') || currentSignal.signal.class.includes('buy') ? 'up' : currentSignal.signal.class.includes('down') || currentSignal.signal.class.includes('sell') ? 'down' : 'neutral'}">
         ${currentSignal.signal.emoji}<br>${currentSignal.type}
       </div>
       <div class="sidebar-subtext">${currentSignal.signal.text}</div>
