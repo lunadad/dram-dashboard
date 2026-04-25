@@ -53,7 +53,7 @@
     --orange: #fb923c;
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; transition: background 0.2s, color 0.2s; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; transition: background 0.2s, color 0.2s; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
   .container { max-width: 1280px; margin: 0 auto; padding: 24px; }
   .dashboard-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; margin-bottom: 32px; flex-wrap: wrap; }
   .header-text { flex: 1; min-width: 300px; }
@@ -100,8 +100,8 @@
   .tag-actual { background: rgba(5, 150, 105, 0.15); color: var(--up); }
   .tag-est { background: rgba(217, 119, 6, 0.15); color: var(--warn); }
   .methodology { margin-top: 8px; }
-  .error-banner { background: rgba(220, 38, 38, 0.1); color: var(--down); border: 1px solid rgba(220, 38, 38, 0.3); border-radius: 8px; padding: 12px 16px; margin-bottom: 20px; font-size: 0.85rem; }
-  .error-banner[hidden] { display: none; }
+  .error-banner { background: rgba(220, 38, 38, 0.08); color: var(--down); border: 1px solid rgba(220, 38, 38, 0.25); border-radius: 8px; padding: 12px 16px; margin-bottom: 20px; font-size: 0.84rem; font-weight: 500; display: flex; align-items: center; gap: 8px; }
+  .error-banner[hidden] { display: none !important; }
   .inflow-cell { color: var(--accent); font-weight: 600; }
   .last-updated { font-size: 0.72rem; color: var(--text-faint); margin-left: 6px; }
   .pred-table-wrapper { display: block; }
@@ -144,13 +144,17 @@
   .signal-card-stat-label { color: var(--text-muted); }
 
   /* ═══ NEW: BUBBLE CHART CONTAINER ═══ */
-  .bubble-chart-wrap { position: relative; height: 320px; }
+  .bubble-chart-wrap { position: relative; height: 340px; }
+
+  /* Chart.js legend customization */
+  .bubble-chart-wrap + p { margin-top: 12px; }
 
   /* ═══ NEW: CORRELATION MATRIX ═══ */
-  .corr-matrix { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
-  .corr-cell { background: var(--bg); border-radius: 6px; padding: 8px; text-align: center; }
-  .corr-cell-val { font-size: 1.2rem; font-weight: 700; margin: 4px 0; }
-  .corr-cell-label { font-size: 0.65rem; color: var(--text-muted); }
+  .corr-matrix { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .corr-cell { background: var(--bg-note); border: 1px solid var(--border-soft); border-radius: 8px; padding: 10px; text-align: center; transition: background 0.2s, border-color 0.2s; }
+  .corr-cell:hover { background: var(--bg); }
+  .corr-cell-val { font-size: 1.3rem; font-weight: 800; margin: 6px 0; }
+  .corr-cell-label { font-size: 0.63rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.3px; }
 
   @media (max-width: 1200px) {
     .dashboard-wrapper { grid-template-columns: 1fr; }
@@ -424,10 +428,30 @@ function mainChart(ctx, labels, inflow, samsungRet, hynixRet) {
     options: {
       responsive: true, maintainAspectRatio: false,
       interaction: { mode: 'index', intersect: false },
-      plugins: { legend: { position: 'top', labels: { usePointStyle: true, padding: 16 } } },
+      plugins: {
+        legend: {
+          position: 'top',
+          labels: {
+            usePointStyle: true,
+            padding: 16,
+            color: cssVar('--text-dim'),
+            font: { size: 12, weight: '500' },
+          },
+        },
+      },
       scales: {
-        y: { position: 'left', title: { display: true, text: '순유입 ($M)' }, grid: { color: cssVar('--grid') } },
-        y1: { position: 'right', title: { display: true, text: '일별 수익률 (%)' }, grid: { drawOnChartArea: false } }
+        y: {
+          position: 'left',
+          title: { display: true, text: '순유입 ($M)', color: cssVar('--text-dim'), font: { weight: '500' } },
+          grid: { color: cssVar('--grid') },
+          ticks: { color: cssVar('--text-muted') },
+        },
+        y1: {
+          position: 'right',
+          title: { display: true, text: '일별 수익률 (%)', color: cssVar('--text-dim'), font: { weight: '500' } },
+          grid: { drawOnChartArea: false },
+          ticks: { color: cssVar('--text-muted') },
+        }
       }
     }
   });
@@ -447,7 +471,14 @@ function aumChart(ctx, labels, aum) {
     options: {
       responsive: true, maintainAspectRatio: false,
       plugins: { legend: { display: false } },
-      scales: { y: { grid: { color: cssVar('--grid') } } }
+      scales: {
+        y: {
+          grid: { color: cssVar('--grid') },
+          title: { display: true, text: 'AUM ($M)', color: cssVar('--text-dim'), font: { weight: '500' } },
+          ticks: { color: cssVar('--text-muted') },
+        },
+        x: { ticks: { color: cssVar('--text-muted') } },
+      }
     }
   });
 }
@@ -464,8 +495,25 @@ function cumulativeChart(ctx, labels, cumSamsung, cumHynix) {
     },
     options: {
       responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { position: 'top', labels: { usePointStyle: true } } },
-      scales: { y: { title: { display: true, text: '누적 수익률 (%)' }, grid: { color: cssVar('--grid') } } }
+      plugins: {
+        legend: {
+          position: 'top',
+          labels: {
+            usePointStyle: true,
+            color: cssVar('--text-dim'),
+            font: { size: 12, weight: '500' },
+            padding: 12,
+          },
+        },
+      },
+      scales: {
+        y: {
+          title: { display: true, text: '누적 수익률 (%)', color: cssVar('--text-dim'), font: { weight: '500' } },
+          grid: { color: cssVar('--grid') },
+          ticks: { color: cssVar('--text-muted') },
+        },
+        x: { ticks: { color: cssVar('--text-muted') } },
+      }
     }
   });
 }
@@ -490,15 +538,15 @@ function bubbleChart(ctx, { inflowData, dramRetData, samExpected, hynExpected })
         {
           label: '삼성전자 (예상 수익률)',
           data: samBubbles,
-          backgroundColor: 'rgba(5, 150, 105, 0.4)',
-          borderColor: 'var(--up)',
+          backgroundColor: 'rgba(5, 150, 105, 0.35)',
+          borderColor: cssVar('--up'),
           borderWidth: 1.5,
         },
         {
           label: 'SK하이닉스 (예상 수익률)',
           data: hynBubbles,
-          backgroundColor: 'rgba(244, 114, 182, 0.4)',
-          borderColor: 'var(--accent-pink)',
+          backgroundColor: 'rgba(244, 114, 182, 0.35)',
+          borderColor: cssVar('--accent-pink'),
           borderWidth: 1.5,
         },
       ],
@@ -506,19 +554,30 @@ function bubbleChart(ctx, { inflowData, dramRetData, samExpected, hynExpected })
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      plugins: { legend: { position: 'bottom' } },
+      plugins: {
+        legend: {
+          position: 'bottom',
+          labels: {
+            color: cssVar('--text-dim'),
+            font: { size: 12, weight: '500' },
+            padding: 16,
+            usePointStyle: true,
+            pointStyle: 'circle',
+          },
+        },
+      },
       scales: {
         x: {
           type: 'linear',
           position: 'bottom',
-          title: { display: true, text: 'DRAM 일일 유입 ($M)' },
-          ticks: { color: 'var(--text-muted)', font: { size: 11 } },
-          grid: { color: 'var(--grid)' },
+          title: { display: true, text: 'DRAM 일일 유입 ($M)', color: cssVar('--text-dim') },
+          ticks: { color: cssVar('--text-muted'), font: { size: 11 } },
+          grid: { color: cssVar('--grid') },
         },
         y: {
-          title: { display: true, text: 'DRAM 일일 수익률 (%)' },
-          ticks: { color: 'var(--text-muted)', font: { size: 11 } },
-          grid: { color: 'var(--grid)' },
+          title: { display: true, text: 'DRAM 일일 수익률 (%)', color: cssVar('--text-dim') },
+          ticks: { color: cssVar('--text-muted'), font: { size: 11 } },
+          grid: { color: cssVar('--grid') },
         },
       },
     },
@@ -533,23 +592,41 @@ function scatterChart(ctx, { xData, yData, color, yLabel, reg }) {
     type: 'scatter',
     data: {
       datasets: [
-        { label: '일별 데이터', data: pts, backgroundColor: color + 'aa', pointRadius: 6 },
+        { label: '일별 데이터', data: pts, backgroundColor: color + 'dd', pointRadius: 5, pointHoverRadius: 7 },
         {
           label: `회귀선 (R²=${reg.r2.toFixed(3)})`,
           data: [
             { x: xMin, y: reg.slope * xMin + reg.intercept },
             { x: xMax, y: reg.slope * xMax + reg.intercept }
           ],
-          type: 'line', borderColor: color, borderDash: [6, 4], pointRadius: 0
+          type: 'line', borderColor: color, borderDash: [5, 5], pointRadius: 0, borderWidth: 2
         },
       ]
     },
     options: {
       responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { position: 'top', labels: { usePointStyle: true } } },
+      plugins: {
+        legend: {
+          position: 'top',
+          labels: {
+            color: cssVar('--text-dim'),
+            font: { size: 11, weight: '500' },
+            padding: 12,
+            usePointStyle: true,
+          },
+        },
+      },
       scales: {
-        x: { title: { display: true, text: 'DRAM 순유입 ($M)' }, grid: { color: cssVar('--grid') } },
-        y: { title: { display: true, text: yLabel + ' 수익률 (%)' }, grid: { color: cssVar('--grid') } }
+        x: {
+          title: { display: true, text: 'DRAM 순유입 ($M)', color: cssVar('--text-dim') },
+          grid: { color: cssVar('--grid') },
+          ticks: { color: cssVar('--text-muted'), font: { size: 11 } },
+        },
+        y: {
+          title: { display: true, text: yLabel + ' 수익률 (%)', color: cssVar('--text-dim') },
+          grid: { color: cssVar('--grid') },
+          ticks: { color: cssVar('--text-muted'), font: { size: 11 } },
+        }
       }
     }
   });
